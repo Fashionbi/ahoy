@@ -1,5 +1,5 @@
 Rails.application.routes.draw do
-  mount Ahoy::Engine => "/ahoy"
+  mount Ahoy::Engine => "/analytics-api"
 end
 
 Ahoy::Engine.routes.draw do

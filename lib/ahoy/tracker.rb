@@ -40,9 +40,9 @@ module Ahoy
       report_exception(e)
     end
 
-    def authenticate(user)
+    def authenticate(customer)
       unless exclude?
-        @store.authenticate(user)
+        @store.authenticate(customer)
       end
       true
     rescue => e
@@ -75,8 +75,8 @@ module Ahoy
       end
     end
 
-    def user
-      @user ||= @store.user
+    def customer
+      @customer ||= @store.customer
     end
 
     # TODO better name

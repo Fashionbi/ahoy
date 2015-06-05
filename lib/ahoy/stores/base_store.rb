@@ -14,11 +14,11 @@ module Ahoy
       def visit
       end
 
-      def authenticate(user)
-        @user = user
-        if visit && visit.respond_to?(:user) && !visit.user
+      def authenticate(customer)
+        @customer = customer
+        if visit && visit.respond_to?(:customer) && !visit.customer
           begin
-            visit.user = user
+            visit.customer = customer
             visit.save!
           rescue ActiveRecord::AssociationTypeMismatch
             # do nothing
@@ -30,8 +30,8 @@ module Ahoy
         Errbase.report(e)
       end
 
-      def user
-        @user ||= (controller.respond_to?(:current_user) && controller.current_user) || (controller.respond_to?(:current_resource_owner, true) && controller.send(:current_resource_owner)) || nil
+      def customer
+        @customer ||= (controller.respond_to?(:current_customer) && controller.current_customer) || (controller.respond_to?(:current_resource_owner, true) && controller.send(:current_resource_owner)) || nil
       end
 
       def exclude?

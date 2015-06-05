@@ -8,7 +8,7 @@ module Ahoy
       def track(name, properties, options = {})
         @model.create! do |e|
           e.visit = options[:visit]
-          e.user = options[:user]
+          e.customer = options[:customer]
           e.name = name
           e.properties = properties
           e.time = options[:time]

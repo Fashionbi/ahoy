@@ -16,22 +16,5 @@ module Ahoy
         end
       }
     end
-
-    # deprecated
-
-    def ahoy_visit
-      class_eval do
-        warn "[DEPRECATION] ahoy_visit is deprecated"
-
-        belongs_to :user, polymorphic: true
-
-        def landing_params
-          @landing_params ||= begin
-            warn "[DEPRECATION] landing_params is deprecated"
-            Deckhands::UtmParameterDeckhand.new(landing_page).landing_params
-          end
-        end
-      end
-    end
   end
 end

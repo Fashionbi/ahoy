@@ -21,8 +21,8 @@
   var canStringify = typeof(JSON) !== "undefined" && typeof(JSON.stringify) !== "undefined";
   var eventQueue = [];
   var page = ahoy.page || window.location.pathname;
-  var visitsUrl = ahoy.visitsUrl || "/ahoy/visits"
-  var eventsUrl = ahoy.eventsUrl || "/ahoy/events"
+  var visitsUrl = ahoy.visitsUrl || "/analytics-api/visits"
+  var eventsUrl = ahoy.eventsUrl || "/analytics-api/events"
 
   // cookies
 

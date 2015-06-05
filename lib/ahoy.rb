@@ -57,7 +57,7 @@ module Ahoy
   self.quiet = true
 
   mattr_accessor :geocode
-  self.geocode = true
+  self.geocode = false
 
   def self.ensure_uuid(id)
     valid = UUIDTools::UUID.parse(id) rescue nil
