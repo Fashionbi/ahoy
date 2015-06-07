@@ -489,35 +489,6 @@ Send a `POST` request as `Content-Type: application/json` to `/ahoy/events` with
 
 Use an array to pass multiple events at once.
 
-## Upgrading
-
-### 1.0.0
-
-Add the following code to the end of `config/intializers/ahoy.rb`.
-
-```ruby
-class Ahoy::Store < Ahoy::Stores::ActiveRecordTokenStore
-  uses_deprecated_subscribers
-end
-```
-
-If you use `Ahoy::Event` to track events, copy it into your project.
-
-```ruby
-module Ahoy
-  class Event < ActiveRecord::Base
-    self.table_name = "ahoy_events"
-
-    belongs_to :visit
-    belongs_to :user, polymorphic: true
-
-    serialize :properties, JSON
-  end
-end
-```
-
-That’s it!  To fix deprecations, keep reading.
-
 #### Visits
 
 Remove `ahoy_visit` from your visit model and replace it with:

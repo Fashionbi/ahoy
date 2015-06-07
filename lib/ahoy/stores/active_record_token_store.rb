@@ -23,35 +23,20 @@ module Ahoy
       end
 
       def track_event(name, properties, options, &block)
-        if self.class.uses_deprecated_subscribers?
-          options[:controller] ||= controller
-          options[:user] ||= user
-          options[:visit] ||= visit
-          options[:visit_token] ||= ahoy.visit_token
-          options[:visitor_token] ||= ahoy.visitor_token
 
-          subscribers = Ahoy.subscribers
-          if subscribers.any?
-            subscribers.each do |subscriber|
-              subscriber.track(name, properties, options.dup)
-            end
-          else
-            $stderr.puts "No subscribers"
+        event =
+          event_model.new do |e|
+            e.visit_id = visit.try(:id)
+            e.user = user
+            e.name = name
+            e.properties = properties
+            e.time = options[:time]
           end
-        else
-          event =
-            event_model.new do |e|
-              e.visit_id = visit.try(:id)
-              e.user = user
-              e.name = name
-              e.properties = properties
-              e.time = options[:time]
-            end
 
-          yield(event) if block_given?
+        yield(event) if block_given?
 
-          event.save!
-        end
+        event.save!
+
       end
 
       def visit
@@ -84,17 +69,6 @@ module Ahoy
           else
             super
           end
-        end
-      end
-
-      class << self
-        def uses_deprecated_subscribers
-          warn "[DEPRECATION] Ahoy subscribers are deprecated"
-          @uses_deprecated_subscribers = true
-        end
-
-        def uses_deprecated_subscribers?
-          @uses_deprecated_subscribers || false
         end
       end
 

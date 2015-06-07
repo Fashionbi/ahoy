@@ -230,12 +230,13 @@
     }, 1000);
   };
 
-  ahoy.trackView = function () {
-    var properties = {
+  ahoy.trackView = function (customProperties) {
+    var defProperties = {
       url: window.location.href,
       title: document.title,
       page: page
     };
+    var properties = $.extend({}, defProperties, customProperties);
     ahoy.track("$view", properties);
   };
 
