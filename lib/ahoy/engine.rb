@@ -1,7 +1,11 @@
 module Ahoy
   class Engine < ::Rails::Engine
-    # from https://github.com/evrone/quiet_assets/blob/master/lib/quiet_assets.rb
-    initializer "ahoy.middleware", after: "sprockets.environment" do
+    initializer "ahoy.middleware", after: "sprockets.environment" do |app|
+      if Ahoy.throttle
+        require "ahoy/throttle"
+        app.middleware.use Ahoy::Throttle
+      end
+
       next unless Ahoy.quiet
 
       # Parse PATH_INFO by assets prefix
@@ -18,7 +22,8 @@ module Ahoy
             call_without_quiet_ahoy(env)
           end
         end
-        alias_method_chain :call, :quiet_ahoy
+        alias_method :call_without_quiet_ahoy, :call
+        alias_method :call, :call_with_quiet_ahoy
       end
     end
   end

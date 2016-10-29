@@ -1,4 +1,5 @@
-require "rails"
+require "active_support"
+require "active_support/core_ext"
 require "addressable/uri"
 require "browser"
 require "geocoder"
@@ -6,13 +7,14 @@ require "referer-parser"
 require "user_agent_parser"
 require "request_store"
 require "uuidtools"
-require "errbase"
+require "safely/core"
 
 require "ahoy/version"
 require "ahoy/tracker"
 require "ahoy/controller"
 require "ahoy/model"
 require "ahoy/visit_properties"
+require "ahoy/properties"
 require "ahoy/deckhands/location_deckhand"
 require "ahoy/deckhands/request_deckhand"
 require "ahoy/deckhands/technology_deckhand"
@@ -24,8 +26,10 @@ require "ahoy/stores/active_record_token_store"
 require "ahoy/stores/log_store"
 require "ahoy/stores/fluentd_store"
 require "ahoy/stores/mongoid_store"
-require "ahoy/logger_silencer"
-require "ahoy/engine"
+require "ahoy/stores/kafka_store"
+require "ahoy/stores/kinesis_firehose_store"
+require "ahoy/stores/bunny_store"
+require "ahoy/engine" if defined?(Rails)
 require "ahoy/warden" if defined?(Warden)
 
 # background jobs
@@ -59,6 +63,33 @@ module Ahoy
   mattr_accessor :geocode
   self.geocode = false
 
+  mattr_accessor :max_content_length
+  self.max_content_length = 8192
+
+  mattr_accessor :max_events_per_request
+  self.max_events_per_request = 10
+
+  mattr_accessor :mount
+  self.mount = true
+
+  mattr_accessor :throttle
+  self.throttle = true
+
+  mattr_accessor :throttle_limit
+  self.throttle_limit = 20
+
+  mattr_accessor :throttle_period
+  self.throttle_period = 1.minute
+
+  mattr_accessor :job_queue
+  self.job_queue = :ahoy
+
+  mattr_accessor :api_only
+  self.api_only = false
+
+  mattr_accessor :protect_from_forgery
+  self.protect_from_forgery = false
+
   def self.ensure_uuid(id)
     valid = UUIDTools::UUID.parse(id) rescue nil
     if valid
@@ -82,12 +113,26 @@ module Ahoy
   self.track_bots = false
 end
 
-ActionController::Base.send :include, Ahoy::Controller
-ActiveRecord::Base.send(:extend, Ahoy::Model) if defined?(ActiveRecord)
+if defined?(Rails)
+  ActiveSupport.on_load(:action_controller) do
+    ActionController::Base.send :include, Ahoy::Controller
+  end
 
-Logger.send :include, Ahoy::LoggerSilencer
+  ActiveSupport.on_load(:active_record) do
+    ActiveRecord::Base.send(:extend, Ahoy::Model)
+  end
 
-begin
-  require "syslog/logger"
-  Syslog::Logger.send :include, Ahoy::LoggerSilencer
-rescue LoadError; end
+  # ensure logger silence will not be added by activerecord-session_store
+  # otherwise, we get SystemStackError: stack level too deep
+  begin
+    require "active_record/session_store/extension/logger_silencer"
+  rescue LoadError
+    require "ahoy/logger_silencer"
+    Logger.send :include, Ahoy::LoggerSilencer
+
+    begin
+      require "syslog/logger"
+      Syslog::Logger.send :include, Ahoy::LoggerSilencer
+    rescue LoadError; end
+  end
+end

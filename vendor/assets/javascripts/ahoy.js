@@ -11,7 +11,30 @@
 (function (window) {
   "use strict";
 
+  var config = {
+    urlPrefix: "",
+    visitsUrl: "/analytics-api/visits",
+    eventsUrl: "/analytics-api/events",
+    cookieDomain: null,
+    page: null,
+    platform: "Web",
+    useBeacon: false,
+    startOnReady: true
+  };
+
   var ahoy = window.ahoy || window.Ahoy || {};
+
+  ahoy.configure = function (options) {
+    for (var key in options) {
+      if (options.hasOwnProperty(key)) {
+        config[key] = options[key];
+      }
+    }
+  };
+
+  // legacy
+  ahoy.configure(ahoy);
+
   var $ = window.jQuery || window.Zepto || window.$;
   var visitId, visitorId, track;
   var visitTtl = 4 * 60; // 4 hours
@@ -20,9 +43,18 @@
   var queue = [];
   var canStringify = typeof(JSON) !== "undefined" && typeof(JSON.stringify) !== "undefined";
   var eventQueue = [];
-  var page = ahoy.page || window.location.pathname;
-  var visitsUrl = ahoy.visitsUrl || "/analytics-api/visits"
-  var eventsUrl = ahoy.eventsUrl || "/analytics-api/events"
+
+  function visitsUrl() {
+    return config.urlPrefix + config.visitsUrl;
+  }
+
+  function eventsUrl() {
+    return config.urlPrefix + config.eventsUrl;
+  }
+
+  function canTrackNow() {
+    return (config.useBeacon || config.trackNow) && canStringify && typeof(window.navigator.sendBeacon) !== "undefined";
+  }
 
   // cookies
 
@@ -35,8 +67,9 @@
       date.setTime(date.getTime() + (ttl * 60 * 1000));
       expires = "; expires=" + date.toGMTString();
     }
-    if (ahoy.domain) {
-      cookieDomain = "; domain=" + ahoy.domain;
+    var domain = config.cookieDomain || config.domain;
+    if (domain) {
+      cookieDomain = "; domain=" + domain;
     }
     document.cookie = name + "=" + escape(value) + expires + cookieDomain + "; path=/";
   }
@@ -98,29 +131,74 @@
     }
   }
 
+  // from jquery-ujs
+
+  function csrfToken() {
+    return $("meta[name=csrf-token]").attr("content");
+  }
+
+  function csrfParam() {
+    return $("meta[name=csrf-param]").attr("content");
+  }
+
+  function CSRFProtection(xhr) {
+    var token = csrfToken();
+    if (token) xhr.setRequestHeader("X-CSRF-Token", token);
+  }
+
+  function sendRequest(url, data, success) {
+    if (canStringify) {
+      $.ajax({
+        type: "POST",
+        url: url,
+        data: JSON.stringify(data),
+        contentType: "application/json; charset=utf-8",
+        dataType: "json",
+        beforeSend: CSRFProtection,
+        success: success
+      });
+    }
+  }
+
+  function eventData(event) {
+    var data = {
+      events: [event],
+      visit_token: event.visit_token,
+      visitor_token: event.visitor_token
+    };
+    delete event.visit_token;
+    delete event.visitor_token;
+    return data;
+  }
+
   function trackEvent(event) {
     ready( function () {
-      // ensure JSON is defined
-      if (canStringify) {
-        $.ajax({
-          type: "POST",
-          url: eventsUrl,
-          data: JSON.stringify([event]),
-          contentType: "application/json; charset=utf-8",
-          dataType: "json",
-          success: function() {
-            // remove from queue
-            for (var i = 0; i < eventQueue.length; i++) {
-              if (eventQueue[i].id == event.id) {
-                eventQueue.splice(i, 1);
-                break;
-              }
-            }
-            saveEventQueue();
+      sendRequest(eventsUrl(), eventData(event), function() {
+        // remove from queue
+        for (var i = 0; i < eventQueue.length; i++) {
+          if (eventQueue[i].id == event.id) {
+            eventQueue.splice(i, 1);
+            break;
           }
-        });
-      }
+        }
+        saveEventQueue();
+      });
     });
+  }
+
+  function trackEventNow(event) {
+    ready( function () {
+      var data = eventData(event);
+      var param = csrfParam();
+      var token = csrfToken();
+      if (param && token) data[param] = token;
+      var payload = new Blob([JSON.stringify(data)], {type : "application/json; charset=utf-8"});
+      navigator.sendBeacon(eventsUrl(), payload);
+    });
+  }
+
+  function page() {
+    return config.page || window.location.pathname;
   }
 
   function eventProperties(e) {
@@ -129,69 +207,71 @@
       tag: $target.get(0).tagName.toLowerCase(),
       id: $target.attr("id"),
       "class": $target.attr("class"),
-      page: page,
+      page: page(),
       section: $target.closest("*[data-section]").data("section")
     };
   }
 
-  // main
+  function createVisit() {
+    isReady = false;
 
-  visitId = getCookie("ahoy_visit");
-  visitorId = getCookie("ahoy_visitor");
-  track = getCookie("ahoy_track");
+    visitId = ahoy.getVisitId();
+    visitorId = ahoy.getVisitorId();
+    track = getCookie("ahoy_track");
 
-  if (visitId && visitorId && !track) {
-    // TODO keep visit alive?
-    log("Active visit");
-    setReady();
-  } else {
-    if (track) {
-      destroyCookie("ahoy_track");
-    }
-
-    if (!visitId) {
-      visitId = generateId();
-      setCookie("ahoy_visit", visitId, visitTtl);
-    }
-
-    // make sure cookies are enabled
-    if (getCookie("ahoy_visit")) {
-      log("Visit started");
-
-      if (!visitorId) {
-        visitorId = generateId();
-        setCookie("ahoy_visitor", visitorId, visitorTtl);
-      }
-
-      var data = {
-        visit_token: visitId,
-        visitor_token: visitorId,
-        platform: ahoy.platform || "Web",
-        landing_page: window.location.href,
-        screen_width: window.screen.width,
-        screen_height: window.screen.height
-      };
-
-      // referrer
-      if (document.referrer.length > 0) {
-        data.referrer = document.referrer;
-      }
-
-      log(data);
-
-      $.post(visitsUrl, data, setReady, "json");
-    } else {
-      log("Cookies disabled");
+    if (visitId && visitorId && !track) {
+      // TODO keep visit alive?
+      log("Active visit");
       setReady();
+    } else {
+      if (track) {
+        destroyCookie("ahoy_track");
+      }
+
+      if (!visitId) {
+        visitId = generateId();
+        setCookie("ahoy_visit", visitId, visitTtl);
+      }
+
+      // make sure cookies are enabled
+      if (getCookie("ahoy_visit")) {
+        log("Visit started");
+
+        if (!visitorId) {
+          visitorId = generateId();
+          setCookie("ahoy_visitor", visitorId, visitorTtl);
+        }
+
+        var data = {
+          visit_token: visitId,
+          visitor_token: visitorId,
+          platform: config.platform,
+          landing_page: window.location.href,
+          screen_width: window.screen.width,
+          screen_height: window.screen.height
+        };
+
+        // referrer
+        if (document.referrer.length > 0) {
+          data.referrer = document.referrer;
+        }
+
+        log(data);
+
+        sendRequest(visitsUrl(), data, setReady);
+      } else {
+        log("Cookies disabled");
+        setReady();
+      }
     }
   }
 
   ahoy.getVisitId = ahoy.getVisitToken = function () {
-    return visitId;
+    return getCookie("ahoy_visit");
   };
 
   ahoy.getVisitorId = ahoy.getVisitorToken = function () {
-    return visitorId;
+    return getCookie("ahoy_visitor");
   };
 
   ahoy.reset = function () {
@@ -216,25 +296,42 @@
     var event = {
       id: generateId(),
       name: name,
-      properties: properties,
+      properties: properties || {},
       time: (new Date()).getTime() / 1000.0
     };
-    log(event);
 
-    eventQueue.push(event);
-    saveEventQueue();
+    // wait for createVisit to log
+    $( function () {
+      log(event);
+    });
 
-    // wait in case navigating to reduce duplicate events
-    setTimeout( function () {
-      trackEvent(event);
-    }, 1000);
+    ready( function () {
+      if (!ahoy.getVisitId()) {
+        createVisit();
+      }
+
+      event.visit_token = ahoy.getVisitId();
+      event.visitor_token = ahoy.getVisitorId();
+
+      if (canTrackNow()) {
+        trackEventNow(event);
+      } else {
+        eventQueue.push(event);
+        saveEventQueue();
+
+        // wait in case navigating to reduce duplicate events
+        setTimeout( function () {
+          trackEvent(event);
+        }, 1000);
+      }
+    });
   };
 
   ahoy.trackView = function (customProperties) {
     var defProperties = {
       url: window.location.href,
       title: document.title,
-      page: page
+      page: page()
     };
     var properties = $.extend({}, defProperties, customProperties);
     ahoy.track("$view", properties);
@@ -271,16 +368,24 @@
     ahoy.trackChanges();
   };
 
-  // push events from queue
-  try {
-    eventQueue = JSON.parse(getCookie("ahoy_events") || "[]");
-  } catch (e) {
-    // do nothing
-  }
+  ahoy.start = function () {
+    createVisit();
 
-  for (var i = 0; i < eventQueue.length; i++) {
-    trackEvent(eventQueue[i]);
-  }
+    // push events from queue
+    try {
+      eventQueue = JSON.parse(getCookie("ahoy_events") || "[]");
+    } catch (e) {
+      // do nothing
+    }
+
+    for (var i = 0; i < eventQueue.length; i++) {
+      trackEvent(eventQueue[i]);
+    }
+
+    ahoy.start = function () {};
+  };
+
+  if (config.startOnReady) { $(ahoy.start); }
 
   window.ahoy = ahoy;
 }(window));

@@ -2,14 +2,21 @@ module Ahoy
   class EventsController < Ahoy::BaseController
     def create
       events =
-        begin
-          ActiveSupport::JSON.decode(request.body.read)
-        rescue ActiveSupport::JSON.parse_error
-          # do nothing
-          []
+        if params[:name]
+          # legacy API
+          [request.params]
+        elsif params[:events]
+          request.params[:events]
+        else
+          begin
+            ActiveSupport::JSON.decode(request.body.read)
+          rescue ActiveSupport::JSON.parse_error
+            # do nothing
+            []
+          end
         end
 
-      events.each do |event|
+      events.first(Ahoy.max_events_per_request).each do |event|
         time = Time.zone.parse(event["time"]) rescue nil
 
         options = {

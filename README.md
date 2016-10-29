@@ -1,16 +1,10 @@
 # Ahoy
 
-:fire: Never build an analytics platform from scratch again.
-
-Ahoy provides a solid foundation to track visits and events in Ruby, JavaScript, and native apps.
-
-Works with any data store so you can easily scale.
+Ahoy provides a solid foundation to track visits and events in Ruby, JavaScript, and native apps. Works with any data store so you can easily scale.
 
 :tangerine: Battle-tested at [Instacart](https://www.instacart.com/opensource)
 
 :postbox: To track emails, check out [Ahoy Email](https://github.com/ankane/ahoy_email).
-
-See [upgrade instructions](#upgrading) on how to move to 1.0.
 
 ## Installation
 
@@ -29,36 +23,23 @@ And add the javascript file in `app/assets/javascripts/application.js` after jQu
 
 ## Choose a Data Store
 
-### PostgreSQL
+Ahoy supports a number of data stores out of the box.  You can start with one of them and customize as needed, or create your own store from scratch.
 
-For Rails 4 and PostgreSQL 9.2 or greater, use:
+- [PostgreSQL, MySQL, or SQLite](#postgresql-mysql-or-sqlite)
+- [MongoDB](#mongodb)
+- [Kafka](#kafka)
+- [Fluentd](#fluentd)
+- [RabbitMQ](#rabbitmq)
+- [Amazon Kinesis Firehose](#amazon-kinesis-firehose)
+- [Logs](#logs)
+- [Custom](#custom)
 
-```sh
-rails generate ahoy:stores:active_record -d postgresql
-rake db:migrate
-```
+### PostgreSQL, MySQL, or SQLite
 
-Otherwise, follow the instructions for MySQL.
-
-### MySQL or SQLite
-
-Add [activeuuid](https://github.com/jashmenn/activeuuid) to your Gemfile.
-
-```ruby
-gem 'activeuuid', '>= 0.5.0'
-```
-
-And run:
+Run:
 
 ```sh
 rails generate ahoy:stores:active_record
-rake db:migrate
-```
-
-If you just want visits, run:
-
-```sh
-rails generate ahoy:stores:active_record_visits
 rake db:migrate
 ```
 
@@ -68,7 +49,23 @@ rake db:migrate
 rails generate ahoy:stores:mongoid
 ```
 
-### Fluentd [master]
+### Kafka
+
+Add [ruby-kafka](https://github.com/zendesk/ruby-kafka) to your Gemfile.
+
+```ruby
+gem 'ruby-kafka'
+```
+
+And run:
+
+```sh
+rails generate ahoy:stores:kafka
+```
+
+Use `ENV["KAFKA_URL"]` to configure.
+
+### Fluentd
 
 Add [fluent-logger](https://github.com/fluent/fluent-logger-ruby) to your Gemfile.
 
@@ -83,6 +80,38 @@ rails generate ahoy:stores:fluentd
 ```
 
 Use `ENV["FLUENTD_HOST"]` and `ENV["FLUENTD_PORT"]` to configure.
+
+### RabbitMQ
+
+Add [bunny](https://github.com/ruby-amqp/bunny) to your Gemfile.
+
+```ruby
+gem 'bunny'
+```
+
+And run:
+
+```sh
+rails generate ahoy:stores:bunny
+```
+
+Use `ENV["RABBITMQ_URL"]` to configure.
+
+### Amazon Kinesis Firehose
+
+Add [aws-sdk](https://github.com/aws/aws-sdk-ruby) to your Gemfile.
+
+```ruby
+gem 'aws-sdk', '>= 2.0.0'
+```
+
+And run:
+
+```sh
+rails generate ahoy:stores:kinesis_firehose
+```
+
+Configure delivery streams and credentials in the initializer.
 
 ### Logs
 
@@ -102,17 +131,15 @@ This creates a class for you to fill out.
 
 ```ruby
 class Ahoy::Store < Ahoy::Stores::BaseStore
-
   def track_visit(options)
   end
 
   def track_event(name, properties, options)
   end
-
 end
 ```
 
-See the [ActiveRecordStore](https://github.com/ankane/ahoy/blob/master/lib/ahoy/stores/active_record_store.rb) for an example.
+See the [ActiveRecordTokenStore](https://github.com/ankane/ahoy/blob/master/lib/ahoy/stores/active_record_token_store.rb) for an example.
 
 ## How It Works
 
@@ -155,7 +182,7 @@ ahoy.track "Viewed book", title: "Hot, Flat, and Crowded"
 
 #### Native Apps
 
-See the [HTTP spec](#native-apps) until libraries are built.
+See the [HTTP spec](#native-apps-1) until libraries are built.
 
 ### Users
 
@@ -174,7 +201,7 @@ ahoy.authenticate(user)
 Stores are built to be highly customizable.
 
 ```ruby
-class Ahoy::Store < Ahoy::Stores::ActiveRecordStore
+class Ahoy::Store < Ahoy::Stores::ActiveRecordTokenStore
   # add methods here
 end
 ```
@@ -184,12 +211,10 @@ end
 Exclude visits and events from being tracked with:
 
 ```ruby
-class Ahoy::Store < Ahoy::Stores::ActiveRecordStore
-
+class Ahoy::Store < Ahoy::Stores::ActiveRecordTokenStore
   def exclude?
     bot? || request.ip == "192.168.1.1"
   end
-
 end
 ```
 
@@ -198,8 +223,7 @@ Bots are excluded by default.
 ### Track Additional Values
 
 ```ruby
-class Ahoy::Store < Ahoy::Stores::ActiveRecordStore
-
+class Ahoy::Store < Ahoy::Stores::ActiveRecordTokenStore
   def track_visit(options)
     super do |visit|
       visit.gclid = visit_properties.landing_params["gclid"]
@@ -211,40 +235,31 @@ class Ahoy::Store < Ahoy::Stores::ActiveRecordStore
       event.ip = request.ip
     end
   end
-
 end
 ```
+
+Some methods you can use are `request`, `controller`, `visit_properties`, and `ahoy`.
 
 ### Customize User
 
 If you use a method other than `current_user`, set it here:
 
 ```ruby
-class Ahoy::Store < Ahoy::Stores::ActiveRecordStore
-
+class Ahoy::Store < Ahoy::Stores::ActiveRecordTokenStore
   def user
     controller.true_user
   end
-
 end
 ```
 
 ### Report Exceptions
 
-Exceptions are rescued so analytics do not break your app.
-
-Ahoy uses [Errbase](https://github.com/ankane/errbase) to try to report them to a service by default.
+Exceptions are rescued so analytics do not break your app. Ahoy uses [Safely](https://github.com/ankane/safely) to try to report them to a service by default.
 
 To customize this, use:
 
 ```ruby
-class Ahoy::Store < Ahoy::Stores::ActiveRecordStore
-
-  def report_exception(e)
-    Rollbar.report_exception(e)
-  end
-
-end
+Safely.report_exception_method = proc { |e| Rollbar.error(e) }
 ```
 
 ### Use Different Models
@@ -252,8 +267,7 @@ end
 For ActiveRecord and Mongoid stores
 
 ```ruby
-class Ahoy::Store < Ahoy::Stores::ActiveRecordStore
-
+class Ahoy::Store < Ahoy::Stores::ActiveRecordTokenStore
   def visit_model
     CustomVisit
   end
@@ -261,7 +275,6 @@ class Ahoy::Store < Ahoy::Stores::ActiveRecordStore
   def event_model
     CustomEvent
   end
-
 end
 ```
 
@@ -285,7 +298,7 @@ Rails actions
 
 ```ruby
 class ApplicationController < ActionController::Base
-  after_filter :track_action
+  after_action :track_action
 
   protected
 
@@ -315,7 +328,21 @@ Ahoy.visit_duration = 30.minutes
 
 ### ActiveRecord
 
-Let’s associate orders with visits. Add a `visit_id` column on orders and do:
+Let’s associate orders with visits.
+
+First, generate a migration and add a `visit_id` column.
+
+```ruby
+class AddVisitIdToOrders < ActiveRecord::Migration
+  def change
+    add_column :orders, :visit_id, :integer
+  end
+end
+```
+
+**Note**: Use the `uuid` column type if the `id` column on `visits` is a `uuid`.
+
+Then, add `visitable` to the model.
 
 ```ruby
 class Order < ActiveRecord::Base
@@ -323,9 +350,7 @@ class Order < ActiveRecord::Base
 end
 ```
 
-When a visitor places an order, the `visit_id` column is automatically set.
-
-:tada: Magic!
+When a visitor places an order, the `visit_id` column is automatically set. :tada:
 
 Customize the column and class name with:
 
@@ -339,25 +364,31 @@ To attach the user with [Doorkeeper](https://github.com/doorkeeper-gem/doorkeepe
 
 ```ruby
 class ApplicationController < ActionController::Base
-
   private
 
   def current_resource_owner
     User.find(doorkeeper_token.resource_owner_id) if doorkeeper_token
   end
-
 end
 ```
 
 ### Geocoding
 
-By default, geocoding is performed inline. For performance, move it to the background. Add [Active Job](https://github.com/ankane/activejob_backport) and set:
+By default, geocoding is performed inline. For performance, move it to the background with:
 
 ```ruby
 Ahoy.geocode = :async
 ```
 
-Or disable it with:
+For Rails 4.0 and 4.1, you’ll need to add [activejob_backport](https://github.com/ankane/activejob_backport).
+
+To change the queue name (`ahoy` by default), use:
+
+```ruby
+Ahoy.job_queue = :low_priority
+```
+
+Or disable geocoding with:
 
 ```ruby
 Ahoy.geocode = false
@@ -376,7 +407,7 @@ Ahoy.track_visits_immediately = true
 You can exclude API endpoints and other actions with:
 
 ```ruby
-skip_before_filter :track_ahoy_visit
+skip_before_action :track_ahoy_visit
 ```
 
 ## Development
@@ -411,7 +442,9 @@ Ahoy.quiet = false
 
 How you explore the data depends on the data store used.
 
-Here are ways to do it with ActiveRecord.
+For SQL databases, you can use [Blazer](https://github.com/ankane/blazer) to easily generate charts and dashboards.
+
+With ActiveRecord, you can do:
 
 ```ruby
 Visit.group(:search_keyword).count
@@ -419,7 +452,7 @@ Visit.group(:country).count
 Visit.group(:referring_domain).count
 ```
 
-[Chartkick](http://chartkick.com/) and [Groupdate](https://github.com/ankane/groupdate) make it super easy to visualize the data.
+[Chartkick](http://chartkick.com/) and [Groupdate](https://github.com/ankane/groupdate) make it easy to visualize the data.
 
 ```erb
 <%= line_chart Visit.group_by_day(:started_at).count %>
@@ -456,7 +489,26 @@ added_item_ids = Ahoy::Event.where(user_id: viewed_store_ids, name: "Added item 
 viewed_checkout_ids = Ahoy::Event.where(user_id: added_item_ids, name: "Viewed checkout").uniq.pluck(:user_id)
 ```
 
-The same approach also works with visitor ids.
+The same approach also works with visitor tokens.
+
+### Querying Properties
+
+With ActiveRecord, use:
+
+```ruby
+Ahoy::Event.where(name: "Viewed product").where_properties(product_id: 123).count
+```
+
+**Note:** If you get a `NoMethodError`, upgrade Ahoy and add `include Ahoy::Properties` to the Ahoy::Event class:
+
+```ruby
+module Ahoy
+  class Event < ActiveRecord::Base
+    include Ahoy::Properties
+    ...
+  end
+end
+```
 
 ## Native Apps
 
@@ -464,7 +516,7 @@ The same approach also works with visitor ids.
 
 When a user launches the app, create a visit.
 
-Generate a `visit_id` and `visitor_id` as [UUIDs](http://en.wikipedia.org/wiki/Universally_unique_identifier).
+Generate a `visit_token` and `visitor_token` as [UUIDs](http://en.wikipedia.org/wiki/Universally_unique_identifier).
 
 Send these values in the `Ahoy-Visit` and `Ahoy-Visitor` headers with all requests.
 
@@ -489,6 +541,72 @@ Send a `POST` request as `Content-Type: application/json` to `/ahoy/events` with
 
 Use an array to pass multiple events at once.
 
+## Reference
+
+By default, Ahoy create endpoints at `/ahoy/visits` and `/ahoy/events`. To disable, use:
+
+```ruby
+Ahoy.mount = false
+```
+
+## Upgrading
+
+### 1.4.0
+
+There’s nothing to do, but it’s worth noting the default store was changed from `ActiveRecordStore` to `ActiveRecordTokenStore` for new installations. `ActiveRecordStore` will continue to be supported.
+
+### json -> jsonb
+
+Create a migration to add a new `jsonb` column.
+
+```ruby
+rename_column :ahoy_events, :properties, :properties_json
+add_column :ahoy_events, :properties, :jsonb
+```
+
+Restart your web server immediately afterwards, as Ahoy will rescue and report errors until then.
+
+Sync the new column.
+
+```ruby
+Ahoy::Event.where(properties: nil).select(:id).find_in_batches do |events|
+  Ahoy::Event.where(id: events.map(&:id)).update_all("properties = properties_json::jsonb")
+end
+```
+
+Then create a migration to drop the old column.
+
+```ruby
+remove_column :ahoy_events, :properties_json
+```
+
+### 1.0.0
+
+Add the following code to the end of `config/intializers/ahoy.rb`.
+
+```ruby
+class Ahoy::Store < Ahoy::Stores::ActiveRecordTokenStore
+  uses_deprecated_subscribers
+end
+```
+
+If you use `Ahoy::Event` to track events, copy it into your project.
+
+```ruby
+module Ahoy
+  class Event < ActiveRecord::Base
+    self.table_name = "ahoy_events"
+
+    belongs_to :visit
+    belongs_to :user, polymorphic: true
+
+    serialize :properties, JSON
+  end
+end
+```
+
+That’s it!  To fix deprecations, keep reading.
+
 #### Visits
 
 Remove `ahoy_visit` from your visit model and replace it with:
@@ -507,11 +625,9 @@ If you have a custom subscriber, copy the `track` method to `track_event` in `Ah
 
 ```ruby
 class Ahoy::Store < Ahoy::Stores::ActiveRecordTokenStore
-
   def track_event(name, properties, options)
     # code copied from the track method in your subscriber
   end
-
 end
 ```
 
@@ -523,12 +639,10 @@ To restore this behavior, use:
 
 ```ruby
 class Ahoy::Store < Ahoy::Stores::ActiveRecordTokenStore
-
   def authenticate(user)
     super
     ahoy.track "$authenticate"
   end
-
 end
 ```
 
@@ -540,7 +654,6 @@ Skip this step if you do not use these options.
 
 ```ruby
 class Ahoy::Store < Ahoy::Stores::ActiveRecordTokenStore
-
   def user
     # logic from Ahoy.user_method goes here
     controller.true_user
@@ -550,7 +663,6 @@ class Ahoy::Store < Ahoy::Stores::ActiveRecordTokenStore
     # logic from Ahoy.track_bots and Ahoy.exclude_method goes here
     bot? || request.ip == "192.168.1.1"
   end
-
 end
 ```
 
@@ -573,7 +685,8 @@ end
 
 ## TODO
 
-- simple dashboard
+- real-time dashboard of visits and events
+- more events for append only stores
 - turn off modules
 
 ## No Ruby?

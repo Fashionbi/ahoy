@@ -27,7 +27,7 @@ module Ahoy
       end
 
       def report_exception(e)
-        Errbase.report(e)
+        raise e
       end
 
       def customer
@@ -45,7 +45,7 @@ module Ahoy
       protected
 
       def bot?
-        @bot ||= request ? Browser.new(ua: request.user_agent).bot? : false
+        @bot ||= request ? Browser.new(request.user_agent).bot? : false
       end
 
       def request
@@ -73,7 +73,7 @@ module Ahoy
 
       def geocode(visit)
         if Ahoy.geocode == :async
-          Ahoy::GeocodeJob.perform_later(visit)
+          Ahoy::GeocodeJob.set(queue: Ahoy.job_queue).perform_later(visit)
         end
       end
 
